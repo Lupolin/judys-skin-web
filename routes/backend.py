@@ -8,21 +8,45 @@ backend = Blueprint("backend", __name__)
 @backend.route("/products", methods=["GET"])
 def get_all_products():
     conn = get_connection()
-    cur = conn.cursor(dictionary=True)  # 使用字典格式
+    cur = conn.cursor()
     cur.execute("SELECT id, name, quantity, current_quantity, volume, status FROM products")
-    products = cur.fetchall()
+    rows = cur.fetchall()
+    products = []
+    for row in rows:
+        # 檢查 row 是字典還是元組
+        if isinstance(row, dict):
+            products.append(row)
+        else:
+            products.append({
+                "id": row[0],
+                "name": row[1],
+                "quantity": row[2],
+                "current_quantity": row[3],
+                "volume": row[4],
+                "status": row[5]
+            })
     conn.close()
     return jsonify(products)
 
 @backend.route("/products/<product_id>", methods=["GET"])
 def get_product(product_id):
     conn = get_connection()
-    cur = conn.cursor(dictionary=True)
+    cur = conn.cursor()
     cur.execute("SELECT id, name, quantity, volume, status FROM products WHERE id = %s", (product_id,))
-    product = cur.fetchone()
+    row = cur.fetchone()
     conn.close()
-    if product:
-        return jsonify(product)
+    if row:
+        if isinstance(row, dict):
+            return jsonify(row)
+        else:
+            product = {
+                "id": row[0],
+                "name": row[1],
+                "quantity": row[2],
+                "volume": row[3],
+                "status": row[4]
+            }
+            return jsonify(product)
     else:
         return jsonify({"error": "找不到商品"}), 404
 @backend.route("/products", methods=["POST"])
@@ -74,39 +98,81 @@ def remove_product(product_id):
 @backend.route("/orders", methods=["GET"])
 def get_all_orders():
     conn = get_connection()
-    cur = conn.cursor(dictionary=True)
+    cur = conn.cursor()
     cur.execute("SELECT id, user_id, user_name, status, created_at, updated_at FROM orders")
     orders = []
     for order_row in cur.fetchall():
-        order_id = order_row['id']
-        # 查詢訂單明細
-        cur.execute("SELECT product_id, product_name, quantity FROM order_items WHERE order_id = %s", (order_id,))
-        items = cur.fetchall()
-        order_data = order_row.copy()
-        order_data['items'] = items
-        orders.append(order_data)
+        if isinstance(order_row, dict):
+            order_id = order_row['id']
+            # 查詢訂單明細
+            cur.execute("SELECT product_id, product_name, quantity FROM order_items WHERE order_id = %s", (order_id,))
+            items = cur.fetchall()
+            order_data = order_row.copy()
+            order_data['items'] = items
+            orders.append(order_data)
+        else:
+            order_id, user_id, user_name, status, created_at, updated_at = order_row
+            # 查詢訂單明細
+            cur.execute("SELECT product_id, product_name, quantity FROM order_items WHERE order_id = %s", (order_id,))
+            items = [
+                {
+                    "product_id": item[0],
+                    "product_name": item[1],
+                    "quantity": item[2]
+                }
+                for item in cur.fetchall()
+            ]
+            orders.append({
+                "id": order_id,
+                "user_id": user_id,
+                "user_name": user_name,
+                "status": status,
+                "created_at": created_at,
+                "updated_at": updated_at,
+                "items": items
+            })
     conn.close()
     return jsonify(orders)
 
 @backend.route("/orders/<order_id>", methods=["GET"])
 def get_order(order_id):
     conn = get_connection()
-    cur = conn.cursor(dictionary=True)
+    cur = conn.cursor()
     cur.execute("SELECT id, user_id FROM orders WHERE id = %s", (order_id,))
     order_row = cur.fetchone()
     if not order_row:
         conn.close()
         return jsonify({"error": "找不到訂單"}), 404
     
-    # 查詢訂單明細
-    cur.execute("SELECT product_id, product_name, quantity FROM order_items WHERE order_id = %s", (order_id,))
-    items = cur.fetchall()
+    if isinstance(order_row, dict):
+        order_id = order_row['id']
+        user_id = order_row['user_id']
+        # 查詢訂單明細
+        cur.execute("SELECT product_id, product_name, quantity FROM order_items WHERE order_id = %s", (order_id,))
+        items = cur.fetchall()
+        result = {
+            "order_id": order_id,
+            "user_id": user_id,
+            "items": items
+        }
+    else:
+        order_id, user_id = order_row
+        # 查詢訂單明細
+        cur.execute("SELECT product_id, product_name, quantity FROM order_items WHERE order_id = %s", (order_id,))
+        items = [
+            {
+                "product_id": item[0],
+                "product_name": item[1],
+                "quantity": item[2]
+            }
+            for item in cur.fetchall()
+        ]
+        result = {
+            "order_id": order_id,
+            "user_id": user_id,
+            "items": items
+        }
     
-    result = {
-        "order_id": order_row['id'],
-        "user_id": order_row['user_id'],
-        "items": items
-    }
     conn.close()
     return jsonify(result)
 @backend.route("/orders", methods=["POST"])
@@ -124,6 +190,21 @@ def create_order():
 
     try:
         order_id = str(uuid.uuid4())
+        print(f"Debug: Creating order {order_id} for user {user_id}")
+
+        # 檢查用戶是否存在，如果不存在則創建匿名用戶
+        cur.execute("SELECT id FROM users WHERE id = %s", (user_id,))
+        user_exists = cur.fetchone()
+        print(f"Debug: User exists: {user_exists}")
+        
+        if not user_exists:
+            # 創建匿名用戶
+            print(f"Debug: Creating anonymous user {user_id}")
+            cur.execute("""
+                INSERT INTO users (id, email, password_hash, user_name, phone, created_at) 
+                VALUES (%s, %s, %s, %s, %s, NOW())
+            """, (user_id, f"{user_id}@anonymous.com", "no_password", user_name, ""))
+            print(f"Debug: Anonymous user created successfully")
 
         # 建立訂單，需寫入 user_id, user_name
         cur.execute("INSERT INTO orders (id, user_id, user_name) VALUES (%s, %s, %s)", (order_id, user_id, user_name))
@@ -138,7 +219,12 @@ def create_order():
             row = cur.fetchone()
             if not row:
                 raise Exception(f"❌ 找不到商品：{product_id}")
-            product_name = row[0]
+            
+            # 處理查詢結果格式
+            if isinstance(row, dict):
+                product_name = row['name']
+            else:
+                product_name = row[0]
 
             # 寫入 order_items
             cur.execute("""
@@ -163,7 +249,7 @@ def create_order():
 @backend.route("/products/<product_id>/stock", methods=["GET"])
 def get_product_stock(product_id):
     conn = get_connection()
-    cur = conn.cursor(dictionary=True)
+    cur = conn.cursor()
     cur.execute("SELECT quantity FROM products WHERE id = %s", (product_id,))
     row = cur.fetchone()
     conn.close()
