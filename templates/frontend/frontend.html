@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <title>保養品前台</title>
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    <div class="container mt-4">
+      <h2>目前產品</h2>
+      {% if products %}
+      <table class="table table-striped">
+        <thead>
+          <tr>
+            <th>產品名稱</th>
+            <th>容量</th>
+            <th>目前數量</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for id, name, volume, current_quantity in products %}
+          <tr>
+            <td>{{ name }}</td>
+            <td>{{ volume }}</td>
+            <td>{{ current_quantity }}</td>
+            <td>
+              <button
+                class="btn btn-sm btn-success"
+                onclick="addToCart('{{ id }}', '{{ name }}', '{{ volume }}')"
+              >
+                加入購物車
+              </button>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <!-- 購物車區塊 -->
+      <div class="card p-3 mb-3">
+        <h5>購物車</h5>
+        <div id="cartList"></div>
+        <button class="btn btn-primary mt-2" onclick="submitOrder()">
+          送出訂單
+        </button>
+        <div id="orderMsg" class="mt-2"></div>
+      </div>
+      {% else %}
+      <p>目前尚無產品。</p>
+      {% endif %}
+    </div>
+
+    <!-- 注意事項彈跳視窗 -->
+    <div
+      class="modal fade"
+      id="noticeModal"
+      tabindex="-1"
+      aria-labelledby="noticeModalLabel"
+      aria-hidden="true"
+    >
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h1 class="modal-title fs-5" id="noticeModalLabel">
+              Ju愛天然芳療保養試用預約
+            </h1>
+          </div>
+          <div class="modal-body custom-modal-body">
+            <h4 class="fw-bold text-primary mb-2">
+              預約提前，體驗Ju愛天然保養無縫銜接
+            </h4>
+            <p>感謝您之前參加我們的天然芳療保養品試用活動！</p>
+            <p>
+              為確保每位參與者獲得最新鮮的產品，我們的製作期約需一週，
+              <span class="fw-bold text-danger">請提前安排您的回訂</span
+              >，我們將確保您的保養體驗不間斷，並在收到後時確認製作排程通知日期，讓您無需擔心等待。
+            </p>
+            <p>
+              我們希望您喜歡這次的體驗，並誠摯邀請您再次預約，享受更多Ju愛的天然呵護！
+            </p>
+            <div class="alert alert-warning" role="alert">
+              <strong>每月手工製作，產能有限，請見諒。</strong>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button
+              type="button"
+              class="btn btn-success"
+              data-bs-dismiss="modal"
+            >
+              確認
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bootstrap & Modal Script -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="{{ url_for('static', filename='js/modal.js') }}"></script>
+    <script>
+      let cart = [];
+      function addToCart(id, name, volume) {
+        const index = cart.findIndex((item) => item.product_id === id);
+        if (index > -1) {
+          cart[index].quantity += 1;
+        } else {
+          cart.push({ product_id: id, name, volume, quantity: 1 });
+        }
+        renderCart();
+      }
+      function removeFromCart(id) {
+        cart = cart.filter((item) => item.product_id !== id);
+        renderCart();
+      }
+      function changeQuantity(id, value) {
+        const item = cart.find((item) => item.product_id === id);
+        if (item) {
+          item.quantity = Math.max(1, parseInt(value));
+          renderCart();
+        }
+      }
+      function renderCart() {
+        const cartList = document.getElementById("cartList");
+        if (cart.length === 0) {
+          cartList.innerHTML = "<p>購物車是空的。</p>";
+          return;
+        }
+        cartList.innerHTML = `
+          <table class="table table-sm">
+            <thead>
+              <tr>
+                <th>產品</th>
+                <th>容量</th>
+                <th>數量</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${cart
+                .map(
+                  (item) => `
+                <tr>
+                  <td>${item.name}</td>
+                  <td>${item.volume}</td>
+                  <td>
+                    <input type="number" min="1" value="${item.quantity}" style="width:60px"
+                      onchange="changeQuantity('${item.product_id}', this.value)">
+                  </td>
+                  <td>
+                    <button class="btn btn-sm btn-danger" onclick="removeFromCart('${item.product_id}')">移除</button>
+                  </td>
+                </tr>
+              `
+                )
+                .join("")}
+            </tbody>
+          </table>
+        `;
+      }
+      async function submitOrder() {
+        const userName = prompt("請輸入您的姓名：");
+        if (!userName || cart.length === 0) return;
+        const items = cart.map((item) => ({
+          product_id: item.product_id,
+          quantity: item.quantity,
+        }));
+        const res = await fetch("/orders", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            user_id: userName,
+            user_name: userName,
+            items,
+          }),
+        });
+        const msgDiv = document.getElementById("orderMsg");
+        if (res.ok) {
+          msgDiv.innerHTML = '<span class="text-success">訂單已送出！</span>';
+          cart = [];
+          renderCart();
+        } else {
+          const data = await res.json();
+          msgDiv.innerHTML =
+            '<span class="text-danger">' +
+            (data.error || "下單失敗") +
+            "</span>";
+        }
+      }
+      // 初始化購物車畫面
+      renderCart();
+    </script>
+    <script>
+      // 自動判斷有無登入，無則跳轉到登入頁
+      if (!localStorage.getItem("jwtToken")) {
+        window.location.href = "/login";
+      }
+    </script>
+  </body>
+</html>

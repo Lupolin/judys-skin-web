@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>後台管理系統</title>
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='css/dashboard.css') }}"
+    />
+  </head>
+  <body>
+    <div class="container">
+      <h1>後台管理系統</h1>
+      <div class="tabs">
+        <button class="tab active" onclick="showSection('products')">
+          商品管理
+        </button>
+        <button class="tab" onclick="showSection('orders')">訂單管理</button>
+        <button class="tab" onclick="showSection('dashboard')">儀表板</button>
+      </div>
+      <!-- 儀表板區塊 -->
+      <div class="section" id="dashboard-section">
+        <h2>儀表板</h2>
+        <div id="dashboard-summary">
+          <p>載入中...</p>
+        </div>
+      </div>
+      <!-- 商品管理區塊 -->
+      <div class="section active" id="products-section">
+        <h2>商品管理</h2>
+        <button class="refresh-btn" onclick="loadProducts()">重新整理</button>
+        <!-- 新增商品表單 -->
+        <form
+          id="addProductForm"
+          style="
+            margin-bottom: 18px;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+          "
+        >
+          <input
+            type="text"
+            id="addName"
+            placeholder="商品名稱"
+            required
+            style="padding: 4px 8px"
+          />
+          <input
+            type="number"
+            id="addQuantity"
+            placeholder="數量"
+            min="1"
+            required
+            style="padding: 4px 8px; width: 80px"
+          />
+          <input
+            type="text"
+            id="addVolume"
+            placeholder="容量/規格"
+            required
+            style="padding: 4px 8px; width: 120px"
+          />
+          <input type="hidden" id="addStatus" value="active" />
+          <button type="submit">新增</button>
+        </form>
+        <table id="productTable">
+          <thead>
+            <tr>
+              <th>名稱</th>
+              <th>數量</th>
+              <th>庫存</th>
+              <th>狀態</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+        <!-- 編輯商品彈窗 -->
+        <div
+          id="editModal"
+          style="
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(0, 0, 0, 0.3);
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+          "
+        >
+          <div
+            style="
+              background: #fff;
+              padding: 24px 32px;
+              border-radius: 8px;
+              min-width: 300px;
+              max-width: 90vw;
+            "
+          >
+            <h3 style="margin-top: 0">編輯商品</h3>
+            <form
+              id="editProductForm"
+              style="display: flex; flex-direction: column; gap: 10px"
+            >
+              <input type="hidden" id="editId" />
+              <label>名稱 <input type="text" id="editName" required /></label>
+              <label
+                >數量 <input type="number" id="editQuantity" min="1" required
+              /></label>
+              <label
+                >容量/規格 <input type="text" id="editVolume" required
+              /></label>
+              <label
+                >狀態
+                <select id="editStatus">
+                  <option value="active">上架</option>
+                  <option value="inactive">下架</option>
+                </select>
+              </label>
+              <div style="text-align: right">
+                <button
+                  type="button"
+                  onclick="closeEditModal()"
+                  style="background: #888"
+                >
+                  取消
+                </button>
+                <button type="submit">儲存</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+      <!-- 訂單管理區塊 -->
+      <div class="section" id="orders-section">
+        <h2>訂單管理</h2>
+        <button class="refresh-btn" onclick="loadOrders()">重新整理</button>
+        <table id="orderTable">
+          <thead>
+            <tr>
+              <th style="width: 110px; text-align: left">訂單編號</th>
+              <th>用戶名稱</th>
+              <th>訂購時間</th>
+              <th>商品明細</th>
+              <th>訂單狀態</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+    <script>
+      function showSection(section) {
+        document
+          .querySelectorAll(".tab")
+          .forEach((tab) => tab.classList.remove("active"));
+        document
+          .querySelectorAll(".section")
+          .forEach((sec) => sec.classList.remove("active"));
+        if (section === "products") {
+          document.querySelector(".tab:nth-child(1)").classList.add("active");
+          document.getElementById("products-section").classList.add("active");
+        } else if (section === "orders") {
+          document.querySelector(".tab:nth-child(2)").classList.add("active");
+          document.getElementById("orders-section").classList.add("active");
+        } else if (section === "dashboard") {
+          document.querySelector(".tab:nth-child(3)").classList.add("active");
+          document.getElementById("dashboard-section").classList.add("active");
+        }
+      }
+
+      // 儀表板資料
+      function loadDashboard() {
+        Promise.all([
+          fetch("/products").then((r) => r.json()),
+          fetch("/orders").then((r) => r.json()),
+        ]).then(([products, orders]) => {
+          const totalProducts = products.length;
+          const totalOrders = orders.length;
+          const totalStock = products.reduce(
+            (sum, p) => sum + (p.quantity || 0),
+            0
+          );
+          document.getElementById("dashboard-summary").innerHTML = `
+          <ul>
+            <li>商品總數：<b>${totalProducts}</b></li>
+            <li>訂單總數：<b>${totalOrders}</b></li>
+            <li>商品總庫存：<b>${totalStock}</b></li>
+          </ul>
+        `;
+        });
+      }
+
+      // 商品管理
+      function loadProducts() {
+        fetch("/products")
+          .then((res) => res.json())
+          .then((data) => {
+            const tbody = document.querySelector("#productTable tbody");
+            tbody.innerHTML = "";
+            data.forEach((p) => {
+              tbody.innerHTML += `
+              <tr>
+                <td>${p.name}</td>
+                <td>${p.quantity}</td>
+                <td>${p.current_quantity}</td>
+                <td>${p.status}</td>
+                <td>
+                  <button onclick="editProduct('${p.id}')">編輯</button>
+                  <button onclick="deleteProduct('${p.id}')">刪除</button>
+                </td>
+              </tr>`;
+            });
+          });
+      }
+      // 新增商品
+      document.getElementById("addProductForm").onsubmit = function (e) {
+        e.preventDefault();
+        const name = document.getElementById("addName").value.trim();
+        const quantity = parseInt(document.getElementById("addQuantity").value);
+        const volume = document.getElementById("addVolume").value.trim();
+        const status = document.getElementById("addStatus").value;
+        fetch("/products", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name, quantity, volume, status }),
+        }).then((r) => {
+          if (r.ok) {
+            document.getElementById("addProductForm").reset();
+            loadProducts();
+          } else {
+            alert("新增失敗");
+          }
+        });
+      };
+      // 編輯商品
+      function editProduct(id) {
+        fetch(`/products/${id}`)
+          .then((res) => res.json())
+          .then((p) => {
+            document.getElementById("editId").value = p.id;
+            document.getElementById("editName").value = p.name;
+            document.getElementById("editQuantity").value = p.quantity;
+            document.getElementById("editVolume").value = p.volume;
+            document.getElementById("editStatus").value = p.status;
+            document.getElementById("editModal").style.display = "flex";
+          });
+      }
+      document.getElementById("editProductForm").onsubmit = function (e) {
+        e.preventDefault();
+        const id = document.getElementById("editId").value;
+        const name = document.getElementById("editName").value.trim();
+        const quantity = parseInt(
+          document.getElementById("editQuantity").value
+        );
+        const volume = document.getElementById("editVolume").value.trim();
+        const status = document.getElementById("editStatus").value;
+        fetch(`/products/${id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ quantity, volume, status, name }),
+        }).then((r) => {
+          if (r.ok) {
+            closeEditModal();
+            loadProducts();
+          } else {
+            alert("更新失敗");
+          }
+        });
+      };
+      function closeEditModal() {
+        document.getElementById("editModal").style.display = "none";
+      }
+      // 刪除商品
+      function deleteProduct(id) {
+        fetch(`/products/${id}`, { method: "DELETE" }).then(() =>
+          loadProducts()
+        );
+      }
+
+      // 訂單管理
+      function loadOrders() {
+        fetch("/orders")
+          .then((res) => res.json())
+          .then((data) => {
+            const tbody = document.querySelector("#orderTable tbody");
+            tbody.innerHTML = "";
+            data.forEach((o) => {
+              tbody.innerHTML += `
+              <tr>
+                <td>${o.order_id}</td>
+                <td>${o.user_name}</td>
+                <td>${o.created_at}</td>
+                <td>
+                    <ul class="order-item-list">
+                    ${o.items
+                      .map(
+                        (i) =>
+                          `<li class="order-item">
+                        <span class="order-item-name">${i.product_name}</span>
+                        <span class="order-item-qty">x ${i.quantity}</span>
+                        </li>`
+                      )
+                      .join("")}
+                    </ul>
+                </td>
+                <td>${o.status}</td>
+              </tr>`;
+            });
+          });
+      }
+
+      window.onload = function () {
+        loadDashboard();
+        loadProducts();
+        loadOrders();
+      };
+    </script>
+  </body>
+</html>

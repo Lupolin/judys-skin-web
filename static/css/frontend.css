@@ -1,0 +1,36 @@
+/* 彈跳視窗標題強調 */
+.modal-title {
+  color: #2a7b6f;
+  font-weight: bold;
+  letter-spacing: 1px;
+}
+
+/* 彈跳視窗內容區塊美化 */
+.custom-modal-body {
+  background: #f8f9fa;
+  border-radius: 8px;
+  padding: 18px 20px;
+  box-shadow: 0 2px 8px rgba(42, 123, 111, 0.08);
+}
+
+/* 重要提醒區塊 */
+.custom-modal-body .alert-warning {
+  background: #fffbe6;
+  color: #b8860b;
+  border: 1px solid #ffe58f;
+  font-size: 1.05em;
+  margin-top: 18px;
+  border-radius: 6px;
+}
+
+/* 內文段落間距 */
+.custom-modal-body p {
+  margin-bottom: 0.7em;
+  line-height: 1.7;
+}
+
+/* 強調字 */
+.custom-modal-body .text-danger {
+  font-weight: bold;
+  color: #d9534f !important;
+}
