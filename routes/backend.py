@@ -8,37 +8,20 @@ backend = Blueprint("backend", __name__)
 @backend.route("/products", methods=["GET"])
 def get_all_products():
     conn = get_connection()
-    cur = conn.cursor()
+    cur = conn.cursor(dictionary=True)  # 使用字典格式
     cur.execute("SELECT id, name, quantity, current_quantity, volume, status FROM products")
-    products = [
-        {
-            "id": row[0],
-            "name": row[1],
-            "quantity": row[2],
-            "current_quantity": row[3],
-            "volume": row[4],
-            "status": row[5]
-        }
-        for row in cur.fetchall()
-    ]
+    products = cur.fetchall()
     conn.close()
     return jsonify(products)
 
 @backend.route("/products/<product_id>", methods=["GET"])
 def get_product(product_id):
     conn = get_connection()
-    cur = conn.cursor()
+    cur = conn.cursor(dictionary=True)
     cur.execute("SELECT id, name, quantity, volume, status FROM products WHERE id = %s", (product_id,))
-    row = cur.fetchone()
+    product = cur.fetchone()
     conn.close()
-    if row:
-        product = {
-            "id": row[0],
-            "name": row[1],
-            "quantity": row[2],
-            "volume": row[3],
-            "status": row[4]
-        }
+    if product:
         return jsonify(product)
     else:
         return jsonify({"error": "找不到商品"}), 404
@@ -91,58 +74,41 @@ def remove_product(product_id):
 @backend.route("/orders", methods=["GET"])
 def get_all_orders():
     conn = get_connection()
-    cur = conn.cursor()
+    cur = conn.cursor(dictionary=True)
     cur.execute("SELECT id, user_id, user_name, status, created_at, updated_at FROM orders")
     orders = []
     for order_row in cur.fetchall():
-        order_id, user_id, user_name, status, created_at, updated_at = order_row
+        order_id = order_row['id']
         # 查詢訂單明細
         cur.execute("SELECT product_id, product_name, quantity FROM order_items WHERE order_id = %s", (order_id,))
-        items = [
-            {
-                "product_id": item[0],
-                "product_name": item[1],
-                "quantity": item[2]
-            }
-            for item in cur.fetchall()
-        ]
-        orders.append({
-            "order_id": order_id,
-            "user_id": user_id,
-            "user_name": user_name,
-            "status": status,
-            "created_at": created_at,
-            "updated_at": updated_at,
-            "items": items
-        })
+        items = cur.fetchall()
+        order_data = order_row.copy()
+        order_data['items'] = items
+        orders.append(order_data)
     conn.close()
     return jsonify(orders)
 
 @backend.route("/orders/<order_id>", methods=["GET"])
 def get_order(order_id):
     conn = get_connection()
-    cur = conn.cursor()
+    cur = conn.cursor(dictionary=True)
     cur.execute("SELECT id, user_id FROM orders WHERE id = %s", (order_id,))
     order_row = cur.fetchone()
     if not order_row:
         conn.close()
         return jsonify({"error": "找不到訂單"}), 404
-    order_id, user_id = order_row
+    
+    # 查詢訂單明細
     cur.execute("SELECT product_id, product_name, quantity FROM order_items WHERE order_id = %s", (order_id,))
-    items = [
-        {
-            "product_id": item[0],
-            "product_name": item[1],
-            "quantity": item[2]
-        }
-        for item in cur.fetchall()
-    ]
-    conn.close()
-    return jsonify({
-        "order_id": order_id,
-        "user_id": user_id,
+    items = cur.fetchall()
+    
+    result = {
+        "order_id": order_row['id'],
+        "user_id": order_row['user_id'],
         "items": items
-    })
+    }
+    conn.close()
+    return jsonify(result)
 @backend.route("/orders", methods=["POST"])
 def create_order():
     data = request.get_json()
@@ -197,7 +163,7 @@ def create_order():
 @backend.route("/products/<product_id>/stock", methods=["GET"])
 def get_product_stock(product_id):
     conn = get_connection()
-    cur = conn.cursor()
+    cur = conn.cursor(dictionary=True)
     cur.execute("SELECT quantity FROM products WHERE id = %s", (product_id,))
     row = cur.fetchone()
     conn.close()

@@ -194,10 +194,8 @@
       renderCart();
     </script>
     <script>
-      // 自動判斷有無登入，無則跳轉到登入頁
-      if (!localStorage.getItem("jwtToken")) {
-        window.location.href = "/login";
-      }
+      // 登入功能已停用，移除自動跳轉
+      // 用戶可以直接使用購物功能
     </script>
   </body>
 </html>
